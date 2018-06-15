@@ -295,10 +295,11 @@ class CaffeGraph(object):
                 max = 0
                 val = None
                 for k, v in data.items():
-                    tmp = reduce(lambda x, y: x*y, v.shape)
-                    if  tmp > max:
-                        val = v.shape
-                        max = tmp
+                    if v.ndim > 0: # avoids 0-dim scalars
+                        tmp = reduce(lambda x, y: x*y, v.shape)
+                        if  tmp > max:
+                            val = v.shape
+                            max = tmp
                 return val
             else:
                 return data[0].shape

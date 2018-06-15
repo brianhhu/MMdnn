@@ -1,13 +1,15 @@
 from collections import namedtuple
 import math
 
-TensorShape = namedtuple('TensorShape', ['batch_size', 'channels', 'height', 'width'])
+TensorShape = namedtuple(
+    'TensorShape', ['batch_size', 'channels', 'height', 'width'])
 
 
 def get_kernel_extents(params, dilation):
     ko_h = dilation * (int(params.k_h) - 1) + 1
     ko_w = dilation * (int(params.k_w) - 1) + 1
     return ko_h, ko_w
+
 
 def get_filter_output_shape(i_h, i_w, dilation, params, round_func):
     ko_h, ko_w = get_kernel_extents(params, dilation)
@@ -21,7 +23,8 @@ def get_strided_kernel_output_shape(node, round_func):
     assert node.layer is not None
     input_shape = node.get_only_parent()[0].output_shape
     params = node.kernel_parameters
-    dilation = node.parameters.dilation[0] if hasattr(node.parameters, 'dilation') and node.parameters.dilation else 1
+    dilation = node.parameters.dilation[0] if hasattr(
+        node.parameters, 'dilation') and node.parameters.dilation else 1
 
     o_h, o_w = get_filter_output_shape(input_shape.height, input_shape.width,
                                        dilation, params, round_func)
@@ -34,10 +37,13 @@ def get_strided_kernel_output_shape(node, round_func):
 def shape_not_implemented(node):
     raise NotImplementedError
 
+
 def shape_deconvolution(node):
     input_shape = node.get_only_parent()[0].output_shape
     params = node.kernel_parameters
-    dilation = node.parameters.dilation[0]
+    # Fix in case dilation not given in model
+    dilation = node.parameters.dilation[0] if hasattr(
+        node.parameters, 'dilation') and node.parameters.dilation else 1
 
     ko_h, ko_w = get_kernel_extents(params, dilation)
     o_h = int(params.s_h) * (input_shape.height - 1) + ko_h - 2 * int(params.p_h)
