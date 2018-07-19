@@ -26,6 +26,7 @@ class PytorchParser(Parser):
     'onnx::Add': 'Add',
     'onnx::Concat': 'Concat',
     'onnx::Relu': 'Relu',
+    'onnx::Tanh': 'Tanh',
 
 
     # TODO
@@ -36,7 +37,6 @@ class PytorchParser(Parser):
     # 'onnx::LeakyRelu': convert_lrelu,
     # 'onnx::Sigmoid': convert_sigmoid,
     # 'onnx::Softmax': convert_softmax,
-    # 'onnx::Tanh': convert_tanh,
     # 'onnx::Selu': convert_selu,
     # 'onnx::Transpose': convert_transpose,
     # 'onnx::Reshape': convert_reshape,
@@ -305,6 +305,9 @@ class PytorchParser(Parser):
     def rename_Relu(self, source_node):
         IR_node = self._convert_identity_operation(source_node, new_op="Relu")
 
+    def rename_Tanh(self, source_node):
+        IR_node = self._convert_identity_operation(source_node, new_op="Tanh")
+
     def rename_Maxpool(self, source_node):
         attr = source_node.attrs
         kwargs = dict()
@@ -456,7 +459,7 @@ class PytorchParser(Parser):
         if source_node.name.startswith('Max'):
             kwargs['pooling_type'] = 'MAX'
         elif source_node.name.startswith('Avg'):
-            kwargs['pooling_type'] = 'MAX'
+            kwargs['pooling_type'] = 'AVG'
         else:
             raise ValueError('Unknown pooling type')
 

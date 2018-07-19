@@ -4,6 +4,7 @@ from __future__ import print_function
 import os
 TEST_ONNX = os.environ.get('TEST_ONNX')
 import sys
+import imp
 import unittest
 import numpy as np
 
@@ -110,7 +111,7 @@ class TestModels(CorrectnessTest):
         parser = TensorflowParser(
             TestModels.cachedir + "imagenet_" + architecture_name + ".ckpt.meta",
             TestModels.cachedir + "imagenet_" + architecture_name + ".ckpt",
-            "MMdnn_Output")
+            ["MMdnn_Output"])
         parser.run(IR_file)
         del parser
         del TensorflowParser
@@ -131,7 +132,7 @@ class TestModels(CorrectnessTest):
         # original to IR
         IR_file = TestModels.tmpdir + 'tensorflow_frozen_' + architecture_name + "_converted"
         parser = TensorflowParser2(
-            TestModels.cachedir + para[0], para[1], para[2].split(':')[0], para[3].split(':')[0])
+            TestModels.cachedir + para[0], [para[1]], [para[2].split(':')[0]], [para[3].split(':')[0]])
         parser.run(IR_file)
         del parser
         del TensorflowParser2
@@ -268,6 +269,26 @@ class TestModels(CorrectnessTest):
         del CoremlParser
         return original_predict
 
+    @staticmethod
+    def PaddleParse(architecture_name, image_path):
+        from mmdnn.conversion.examples.paddle.extractor import paddle_extractor
+        from mmdnn.conversion.paddle.paddle_parser import PaddleParser
+
+        # download model
+        model_filename = paddle_extractor.download(architecture_name, TestModels.cachedir)
+
+        # get original model prediction result
+        original_predict = paddle_extractor.inference(architecture_name, model_filename, TestModels.cachedir, image_path)
+        del paddle_extractor
+
+        # original to IR
+        IR_file = TestModels.tmpdir + 'paddle_' + architecture_name + "_converted"
+
+        parser = PaddleParser(model_filename)
+        parser.run(IR_file)
+        del parser
+        del PaddleParser
+        return original_predict
 
     @staticmethod
     def PytorchParse(architecture_name, image_path):
@@ -343,14 +364,14 @@ class TestModels(CorrectnessTest):
         del emitter
         del CntkEmitter
 
-        model_converted = __import__(converted_file).KitModel(weight_path)
+        model_converted = imp.load_source('CntkModel', converted_file + '.py').KitModel(weight_path)
 
         func = TestKit.preprocess_func[original_framework][architecture_name]
         img = func(image_path)
         predict = model_converted.eval({model_converted.arguments[0]:[img]})
         converted_predict = np.squeeze(predict)
         del model_converted
-        del sys.modules[converted_file]
+        del sys.modules['CntkModel']
         os.remove(converted_file + '.py')
 
         return converted_predict
@@ -360,7 +381,6 @@ class TestModels(CorrectnessTest):
     def TensorflowEmit(original_framework, architecture_name, architecture_path, weight_path, image_path):
         import tensorflow as tf
         from mmdnn.conversion.tensorflow.tensorflow_emitter import TensorflowEmitter
-
         # IR to code
         converted_file = original_framework + '_tensorflow_' + architecture_name + "_converted"
         converted_file = converted_file.replace('.', '_')
@@ -372,19 +392,21 @@ class TestModels(CorrectnessTest):
         del TensorflowEmitter
 
         # import converted model
-        model_converted = __import__(converted_file).KitModel(weight_path)
+        model_converted = imp.load_source('TFModel', converted_file + '.py').KitModel(weight_path)
+
         input_tf, model_tf = model_converted
 
         original_framework = checkfrozen(original_framework)
         func = TestKit.preprocess_func[original_framework][architecture_name]
         img = func(image_path)
         input_data = np.expand_dims(img, 0)
+
         with tf.Session() as sess:
             init = tf.global_variables_initializer()
             sess.run(init)
             predict = sess.run(model_tf, feed_dict = {input_tf : input_data})
         del model_converted
-        del sys.modules[converted_file]
+        del sys.modules['TFModel']
         os.remove(converted_file + '.py')
         converted_predict = np.squeeze(predict)
 
@@ -407,9 +429,11 @@ class TestModels(CorrectnessTest):
 
         # import converted model
         import torch
-        model_converted = __import__(converted_file).KitModel(converted_file + '.npy')
+        model_converted = imp.load_source('PytorchModel', converted_file + '.py').KitModel(converted_file + '.npy')
+
         model_converted.eval()
 
+        original_framework = checkfrozen(original_framework)
         func = TestKit.preprocess_func[original_framework][architecture_name]
         img = func(image_path)
         img = np.transpose(img, (2, 0, 1))
@@ -422,7 +446,7 @@ class TestModels(CorrectnessTest):
         converted_predict = np.squeeze(predict)
 
         del model_converted
-        del sys.modules[converted_file]
+        del sys.modules['PytorchModel']
         del torch
         os.remove(converted_file + '.py')
         os.remove(converted_file + '.npy')
@@ -434,8 +458,6 @@ class TestModels(CorrectnessTest):
     def KerasEmit(original_framework, architecture_name, architecture_path, weight_path, image_path):
         from mmdnn.conversion.keras.keras2_emitter import Keras2Emitter
 
-        original_framework = checkfrozen(original_framework)
-
         # IR to code
         converted_file = original_framework + '_keras_' + architecture_name + "_converted"
         converted_file = converted_file.replace('.', '_')
@@ -446,7 +468,9 @@ class TestModels(CorrectnessTest):
 
 
         # import converted model
-        model_converted = __import__(converted_file).KitModel(weight_path)
+        model_converted = imp.load_source('KerasModel', converted_file + '.py').KitModel(weight_path)
+
+        original_framework = checkfrozen(original_framework)
         func = TestKit.preprocess_func[original_framework][architecture_name]
 
         img = func(image_path)
@@ -460,7 +484,7 @@ class TestModels(CorrectnessTest):
             converted_predict = np.squeeze(predict)
 
         del model_converted
-        del sys.modules[converted_file]
+        del sys.modules['KerasModel']
 
         import keras.backend as K
         K.clear_session()
@@ -476,8 +500,6 @@ class TestModels(CorrectnessTest):
         from collections import namedtuple
         Batch = namedtuple('Batch', ['data'])
 
-        original_framework = checkfrozen(original_framework)
-
         import mxnet
 
         # IR to code
@@ -490,10 +512,12 @@ class TestModels(CorrectnessTest):
         del MXNetEmitter
 
         # import converted model
-        imported = __import__(converted_file)
+        imported = imp.load_source('MXNetModel', converted_file + '.py')
+
         model_converted = imported.RefactorModel()
         model_converted = imported.deploy_weight(model_converted, output_weights_file)
 
+        original_framework = checkfrozen(original_framework)
         func = TestKit.preprocess_func[original_framework][architecture_name]
         img = func(image_path)
         img = np.transpose(img, (2, 0, 1))
@@ -504,7 +528,7 @@ class TestModels(CorrectnessTest):
         converted_predict = np.squeeze(predict)
 
         del model_converted
-        del sys.modules[converted_file]
+        del sys.modules['MXNetModel']
         del mxnet
 
         os.remove(converted_file + '.py')
@@ -518,8 +542,6 @@ class TestModels(CorrectnessTest):
         import caffe
         from mmdnn.conversion.caffe.caffe_emitter import CaffeEmitter
 
-        original_framework = checkfrozen(original_framework)
-
         # IR to code
         converted_file = original_framework + '_caffe_' + architecture_name + "_converted"
         converted_file = converted_file.replace('.', '_')
@@ -529,11 +551,13 @@ class TestModels(CorrectnessTest):
         del CaffeEmitter
 
         # import converted model
-        imported = __import__(converted_file)
+        imported = imp.load_source('CaffeModel', converted_file + '.py')
+
         imported.make_net(converted_file + '.prototxt')
         imported.gen_weight(converted_file + '.npy', converted_file + '.caffemodel', converted_file + '.prototxt')
         model_converted = caffe.Net(converted_file + '.prototxt', converted_file + '.caffemodel', caffe.TEST)
 
+        original_framework = checkfrozen(original_framework)
         func = TestKit.preprocess_func[original_framework][architecture_name]
         img = func(image_path)
         img = np.transpose(img, [2, 0, 1])
@@ -544,7 +568,7 @@ class TestModels(CorrectnessTest):
         converted_predict = np.squeeze(predict)
 
         del model_converted
-        del sys.modules[converted_file]
+        del sys.modules['CaffeModel']
         del caffe
         os.remove(converted_file + '.py')
         os.remove(converted_file + '.npy')
@@ -561,8 +585,6 @@ class TestModels(CorrectnessTest):
         import coremltools
         from PIL import Image
 
-        original_framework = checkfrozen(original_framework)
-
         def prep_for_coreml(prename, BGRTranspose):
             # The list is in RGB oder
             if prename == 'Standard':
@@ -578,6 +600,7 @@ class TestModels(CorrectnessTest):
         # converted_file = original_framework + '_coreml_' + architecture_name + "_converted"
         # converted_file = converted_file.replace('.', '_')
 
+        original_framework = checkfrozen(original_framework)
         func = TestKit.preprocess_func[original_framework][architecture_name]
 
         import inspect
@@ -655,8 +678,6 @@ class TestModels(CorrectnessTest):
         try:
             from mmdnn.conversion.onnx.onnx_emitter import OnnxEmitter
 
-            original_framework = checkfrozen(original_framework)
-
             # IR to code
             converted_file = original_framework + '_onnx_' + architecture_name + "_converted"
             converted_file = converted_file.replace('.', '_')
@@ -667,9 +688,11 @@ class TestModels(CorrectnessTest):
 
             # import converted model
             from onnx_tf.backend import prepare
-            model_converted = __import__(converted_file).KitModel(converted_file + '.npy')
+            model_converted = imp.load_source('OnnxModel', converted_file + '.py').KitModel(converted_file + '.npy')
+
             tf_rep = prepare(model_converted)
 
+            original_framework = checkfrozen(original_framework)
             func = TestKit.preprocess_func[original_framework][architecture_name]
             img = func(image_path)
             input_data = np.expand_dims(img, 0)
@@ -688,7 +711,7 @@ class TestModels(CorrectnessTest):
             del prepare
             del model_converted
             del tf_rep
-            del sys.modules[converted_file]
+            del sys.modules['OnnxModel']
 
             os.remove(converted_file + '.py')
             os.remove(converted_file + '.npy')
@@ -789,8 +812,16 @@ class TestModels(CorrectnessTest):
             'darknet' : {
             },
 
+            'paddle'  : {
+                'resnet50'     : [CaffeEmit], #crash due to gflags_reporting.cc
+                'vgg16'        : [TensorflowEmit],      # First 1000 exactly the same, the last one is different
+
+            },
+
             'pytorch' : {
-            }
+            },
+
+
         }
 
     else:
@@ -809,7 +840,7 @@ class TestModels(CorrectnessTest):
                 'densenet'     : [CaffeEmit, CntkEmit, CoreMLEmit, KerasEmit, MXNetEmit, PytorchEmit, TensorflowEmit],
                 'xception'     : [TensorflowEmit, KerasEmit, CoreMLEmit],
                 'mobilenet'    : [CoreMLEmit, KerasEmit, TensorflowEmit], # TODO: MXNetEmit
-                'nasnet'       : [TensorflowEmit, KerasEmit, CoreMLEmit],
+                # 'nasnet'       : [TensorflowEmit, KerasEmit, CoreMLEmit],
                 'yolo2'        : [KerasEmit],
             },
 
@@ -869,6 +900,13 @@ class TestModels(CorrectnessTest):
                 'yolov3': [KerasEmit],
             },
 
+            'paddle' : {
+                'resnet50': [CoreMLEmit, KerasEmit, MXNetEmit, PytorchEmit, TensorflowEmit], # CaffeEmit crash
+                'resnet101': [CoreMLEmit, KerasEmit, MXNetEmit, PytorchEmit, TensorflowEmit], # CaffeEmit crash
+                # 'vgg16': [TensorflowEmit],
+                # 'alexnet': [TensorflowEmit]
+            },
+
             'pytorch' : {
                 'alexnet'     : [CaffeEmit, CoreMLEmit, KerasEmit, MXNetEmit, PytorchEmit, TensorflowEmit],
                 'densenet201' : [CaffeEmit, CoreMLEmit, KerasEmit, MXNetEmit, PytorchEmit, TensorflowEmit],
@@ -918,7 +956,6 @@ class TestModels(CorrectnessTest):
                     IR_file + ".pb",
                     IR_file + ".npy",
                     self.image_path)
-
                 self._compare_outputs(
                     original_framework,
                     target_framework,
@@ -976,6 +1013,16 @@ class TestModels(CorrectnessTest):
 
     def test_darknet(self):
         self._test_function('darknet', self.DarknetParse)
+
+
+    def test_paddle(self):
+        # omit tensorflow lead to crash
+        import tensorflow as tf
+        try:
+            import paddle.v2 as paddle
+            self._test_function('paddle', self.PaddleParse)
+        except ImportError:
+            print('Please install Paddlepaddle! Or Paddlepaddle is not supported in your platform.', file=sys.stderr)
 
 
     def test_pytorch(self):

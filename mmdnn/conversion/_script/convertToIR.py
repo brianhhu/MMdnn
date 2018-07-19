@@ -5,12 +5,15 @@ from six import text_type as _text_type
 
 def _convert(args):
     if args.inputShape != None:
-        inputshape = [int(x) for x in args.inputShape]
+        inputshape = []
+        for x in args.inputShape:
+            shape = x.split(',')
+            inputshape.append([int(x) for x in shape])
     else:
         inputshape = None
     if args.srcFramework == 'caffe':
         from mmdnn.conversion.caffe.transformer import CaffeTransformer
-        transformer = CaffeTransformer(args.network, args.weights, "tensorflow", inputshape, phase = args.caffePhase)
+        transformer = CaffeTransformer(args.network, args.weights, "tensorflow", inputshape[0], phase = args.caffePhase)
         graph = transformer.transform_graph()
         data = transformer.transform_data()
 
@@ -43,30 +46,37 @@ def _convert(args):
         parser = Keras2Parser(model)
 
     elif args.srcFramework == 'tensorflow' or args.srcFramework == 'tf':
+
         if args.dstNodeName is None:
             raise ValueError("Need to provide the output node of Tensorflow model.")
 
-        # assert args.network or args.frozen_pb
-        if args.frozen_pb:
+        assert args.network or args.weights
+        if not args.network:
+            if args.inNodeName is None:
+                raise ValueError("Need to provide the input node of Tensorflow model.")
+            if inputshape is None:
+                raise ValueError("Need to provide the input node shape of Tensorflow model.")
+            assert len(args.inNodeName) == len(inputshape)
             from mmdnn.conversion.tensorflow.tensorflow_frozenparser import TensorflowParser2
-            parser = TensorflowParser2(args.frozen_pb, inputshape, args.inNodeName, args.dstNodeName)
+            parser = TensorflowParser2(args.weights, inputshape, args.inNodeName, args.dstNodeName)
+
         else:
             from mmdnn.conversion.tensorflow.tensorflow_parser import TensorflowParser
-            if args.inNodeName and inputshape:
-                parser = TensorflowParser(args.network, args.weights, args.dstNodeName, inputshape, args.inNodeName)
+            if args.inNodeName and inputshape[0]:
+                parser = TensorflowParser(args.network, args.weights, args.dstNodeName, inputshape[0], args.inNodeName)
             else:
                 parser = TensorflowParser(args.network, args.weights, args.dstNodeName)
 
     elif args.srcFramework == 'mxnet':
         assert inputshape != None
         if args.weights == None:
-            model = (args.network, inputshape)
+            model = (args.network, inputshape[0])
         else:
             import re
             if re.search('.', args.weights):
                 args.weights = args.weights[:-7]
             prefix, epoch = args.weights.rsplit('-', 1)
-            model = (args.network, prefix, epoch, inputshape)
+            model = (args.network, prefix, epoch, inputshape[0])
 
         from mmdnn.conversion.mxnet.mxnet_parser import MXNetParser
         parser = MXNetParser(model)
@@ -79,13 +89,13 @@ def _convert(args):
     elif args.srcFramework == 'pytorch':
         assert inputshape != None
         from mmdnn.conversion.pytorch.pytorch_parser import PytorchParser
-        parser = PytorchParser(args.network, inputshape)
+        parser = PytorchParser(args.network, inputshape[0])
 
     elif args.srcFramework == 'torch' or args.srcFramework == 'torch7':
         from mmdnn.conversion.torch.torch_parser import TorchParser
         model = args.network or args.weights
         assert model != None
-        parser = TorchParser(model, inputshape)
+        parser = TorchParser(model, inputshape[0])
 
     elif args.srcFramework == 'onnx':
         from mmdnn.conversion.onnx.onnx_parser import ONNXParser
@@ -138,29 +148,24 @@ def _get_parser():
 
     parser.add_argument(
         '--inNodeName', '-inode',
+        nargs='+',
         type=_text_type,
-        default='input',
+        default=None,
         help="[Tensorflow] Input nodes' name of the graph.")
 
     parser.add_argument(
         '--dstNodeName', '-node',
+        nargs='+',
         type=_text_type,
         default=None,
         help="[Tensorflow] Output nodes' name of the graph.")
-
-    parser.add_argument(
-        '--frozen_pb',
-        type=_text_type,
-        default=None,
-        help="[Tensorflow] frozen model file.")
-
 
     parser.add_argument(
         '--inputShape',
         nargs='+',
         type=_text_type,
         default=None,
-        help='[MXNet/Caffe2/Torch7] Input shape of model (channel, height, width)')
+        help='[Tensorflow/MXNet/Caffe2/Torch7] Input shape of model (channel, height, width)')
 
 
     # Caffe

@@ -154,7 +154,7 @@ if __name__=='__main__':
 
     def check_if_need_transpose(self, IR_node):
         parent = self.IR_graph.get_parent(IR_node.name, [0])
-        while parent.type == 'Flatten' or parent.type == 'Dropout':
+        while parent.type == 'Flatten' or parent.type == 'Dropout' or parent.type == 'Reshape':
             parent = self.IR_graph.get_parent(parent.name, [0])
         dim = len(parent.layer.attr['_output_shapes'].list.shape[0].dim)
         if dim > 2:
@@ -293,6 +293,14 @@ bias_term={}, ntop=1)".format(
             # check if need crop output shape
             self.check_if_need_crop(IR_node)
 
+    def emit_ResizeBilinear(self, IR_node):
+        shape = IR_node.get_attr("_output_shapes")[0]
+        shape = shape_to_list(shape)
+        self.add_body(1, "n.{:<15} = L.ResizeBilinear(n.{}, height={}, width={}, ntop=1)".format(
+            IR_node.variable_name,
+            self.parent_variable_name(IR_node),
+            shape[1],
+            shape[2]))
 
     def emit_UNKNOWN(self, IR_node):
         print(IR_node.IR_layer.name)
@@ -447,7 +455,11 @@ bias_term={}, ntop=1)".format(
             IR_node.variable_name,
             self.parent_variable_name(IR_node),
             in_place))
-
+        
+    def emit_Tanh(self, IR_node):
+        self.add_body(1, "n.{:<15} = L.TanH(n.{}, ntop=1)".format(
+            IR_node.variable_name,
+            self.parent_variable_name(IR_node)))
 
     def emit_Softmax(self, IR_node):
         self.add_body(1, "n.{:<15} = L.Softmax(n.{}, ntop=1)".format(

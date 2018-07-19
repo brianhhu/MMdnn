@@ -29,10 +29,10 @@ You can refer [PyTorch model extractor](https://github.com/Microsoft/MMdnn/blob/
 $ mmdownload -f pytorch -h
 Support frameworks: ['alexnet', 'densenet121', 'densenet161', 'densenet169', 'densenet201', 'inception_v3', 'resnet101', 'resnet152', 'resnet18', 'resnet34', 'resnet50', 'vgg11', 'vgg11_bn', 'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn']
 
-$ mmdownload -f pytorch -n resnet50 -o ./
-Downloading: "https://download.pytorch.org/models/resnet50-19c8e357.pth" to /home/ruzhang/.torch/models/resnet50-19c8e357.pth
-100%|████████████████████████████████████████████████████████████████████████| 102502400/102502400 [00:06<00:00, 15858546.50it/s]
-PyTorch pretrained model is saved as [./imagenet_resnet50.pth].
+$ mmdownload -f pytorch -n resnet101 -o ./
+Downloading: "https://download.pytorch.org/models/resnet101-5d3b4d8f.pth" to /home/ruzhang/.torch/models/resnet101-5d3b4d8f.pth
+███████████████████| 102502400/102502400 [00:06<00:00, 15858546.50it/s]
+PyTorch pretrained model is saved as [./imagenet_resnet101.pth].
 
 ```
 
@@ -40,16 +40,16 @@ PyTorch pretrained model is saved as [./imagenet_resnet50.pth].
 You can convert the whole pytorch model to IR structure. Please remember for the generality, we now only take the whole model `pth`, not just the state dict. To be more specific, it is save using `torch.save()` and `torch.load()` can load the whole model.
 
 ```bash
-$ mmtoir -f pytorch -d resnet50 --inputShape 3 224 224 -n imagenet_resnet50.pth --dstNodeName MMdnn_Output
+$ mmtoir -f pytorch -d resnet101 --inputShape 3,224,224 -n imagenet_resnet101.pth
 ```
 
 Please bear in mind that always add `--inputShape` argparse. This thing is different from other framework because pytorch is a dynamic framework.
 
 Then you will get
 ```
-IR network structure is saved as [resnet50.json].
-IR network structure is saved as [resnet50.pb].
-IR weights are saved as [resnet50.npy].
+IR network structure is saved as [resnet101.json].
+IR network structure is saved as [resnet101.pb].
+IR weights are saved as [resnet101.npy].
 ```
 
 ### Convert models from IR to PyTorch code snippet and weights
@@ -97,3 +97,23 @@ Ubuntu 16.04 with
 - The main dataflow in a pytorch network is converted from NHWC(channel last) to NCHW(channel first) format, but some operators (like Concat) with axis may not transform correctly. You may need to correct it manually.
 
 - Currently, no RNN-related operations supported
+
+## FAQ
+
+- There are two types models saved in PyTorch. One is including architecture and weights, which is supported in the MMdnn now. The other  one is only including the weights, which is not supported now.
+
+```python
+only_weight_file = "./alexnet-owt-4df8aa71.pth"      # Download from the model zoo
+architecture_weight_file = "imagenet_alexnet.pth"    # Download using mmdownload()
+
+m = torch.load(only_weight_file)                    # <class 'collections.OrderedDict'>
+m_1 = torch.load(architecture_weight_file)          # <class 'torchvision.models.alexnet.AlexNet'> supported!
+
+```
+- When you get the error "AttributeError: 'collections.OrderedDict' object has no attribute 'state_dict'" , it's because you use the model only include weights part. You need to save a new model with archietecture
+
+```python
+torch.save(model, filename)
+```
+
+
