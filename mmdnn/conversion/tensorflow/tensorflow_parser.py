@@ -46,23 +46,21 @@ class TensorflowParser(Parser):
     ])
 
     dtype_map = {
-        0  : graph_pb2.DT_UNDEFINED,
-        1  : graph_pb2.DT_FLOAT32,
-        2  : graph_pb2.DT_FLOAT64,
-        3  : graph_pb2.DT_INT32,
-        4  : graph_pb2.DT_UINT8,
-        5  : graph_pb2.DT_INT16,
-        6  : graph_pb2.DT_INT8,
-        7  : graph_pb2.DT_STRING,
-        9  : graph_pb2.DT_INT64,
-        10 : graph_pb2.DT_BOOL,
+        0: graph_pb2.DT_UNDEFINED,
+        1: graph_pb2.DT_FLOAT32,
+        2: graph_pb2.DT_FLOAT64,
+        3: graph_pb2.DT_INT32,
+        4: graph_pb2.DT_UINT8,
+        5: graph_pb2.DT_INT16,
+        6: graph_pb2.DT_INT8,
+        7: graph_pb2.DT_STRING,
+        9: graph_pb2.DT_INT64,
+        10: graph_pb2.DT_BOOL,
     }
-
 
     @property
     def src_graph(self):
         return self.tf_graph
-
 
     @staticmethod
     def _load_meta(model_network_path):
@@ -84,9 +82,9 @@ class TensorflowParser(Parser):
         load_protobuf_from_file(meta_graph, model_network_path)
         graph = meta_graph.graph_def
 
-        print ("Tensorflow model file [%s] loaded successfully." % model_network_path)
+        print(
+            "Tensorflow model file [%s] loaded successfully." % model_network_path)
         return graph
-
 
     @staticmethod
     def _load_weights(model_weight_path):
@@ -108,26 +106,25 @@ class TensorflowParser(Parser):
             tensor = reader.get_tensor(name)
             data[name] = tensor
 
-        print ("Tensorflow checkpoint file [%s] loaded successfully. [%d] variables loaded." % (model_weight_path, len(data)))
+        print("Tensorflow checkpoint file [%s] loaded successfully. [%d] variables loaded." % (
+            model_weight_path, len(data)))
         return data
-
 
     @staticmethod
     def _get_scopes(layer_name):
         return layer_name.split('/')
 
-
-    def _convert_reduction_operators(self, source_node, new_op = None):
+    def _convert_reduction_operators(self, source_node, new_op=None):
         IR_node = self._convert_identity_operation(source_node, 0, 1, new_op)
 
         # keep dims
         IR_node.attr['keepdims'].b = source_node.layer.attr['keep_dims'].b
 
         # axes
-        axes = self.get_parent(source_node.name, [1]).layer.attr['value'].tensor
+        axes = self.get_parent(
+            source_node.name, [1]).layer.attr['value'].tensor
         axes = tensor_util.MakeNdarray(axes)
         IR_node.attr['axes'].list.i.extend(axes)
-
 
     def _convert_layers_batchnorm(self, source_node):
         # name, op
@@ -142,7 +139,8 @@ class TensorflowParser(Parser):
         moving_variance = self.get_parent(source_node.name, [0, 0])
         # print(moving_variance.name)
         if self.weight_loaded and moving_variance.name in self.ckpt_data.keys():
-            self.set_weight(source_node.name, 'var', self.ckpt_data[moving_variance.name])
+            self.set_weight(source_node.name, 'var',
+                            self.ckpt_data[moving_variance.name])
 
         # gamma (scale)
         gamma = self.get_son(source_node.name, [0, 0], True)
@@ -347,6 +345,9 @@ class TensorflowParser(Parser):
 
         variable = self.tf_graph.get_node(add_node.in_edges[1])
         variable = self.tf_graph.get_node(variable.in_edges[0])
+
+        if variable.name not in self.ckpt_data:
+            return
 
         assert variable.layer.attr['shape'].shape.dim[0].size == IR_node.attr['kernel_shape'].list.i[-1]
 
